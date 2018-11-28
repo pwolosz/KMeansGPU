@@ -1,52 +1,76 @@
-
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include <stdio.h>
 #include <fstream>
 #include <iostream>
 #include <string>
+#include "csv_helper.h"
+#include "block_threads_helper.h"
 
 using namespace std;
 
-__global__ void kmeans()
-{
+__global__ void kmeans(float *points, int k, int *centroids, int points_per_thread) {
+	int index = threadIdx.x;
+	int block = blockIdx.x;
+	int start_index = index * points_per_thread, end_index = index * points_per_thread + points_per_thread - 1;
+
+	printf("%d, %d - [%d, %d]\n", index, block, start_index, end_index);
 
 }
 
-int main()
-{
-	ifstream file;
-	file.open("D:\\Projects\\gpu\\KMeansGPU\\test1.txt");
-	string line;
-	string val;
-	int n;
-	float *points;
+int main() {
+	
+	int n, threads_count, used_device_blocks, points_per_thread = 3;
+	int k = 2;
+	float *points = read_csv("D:\\Projects\\gpu\\KMeansGPU\\test1.txt", n);
+	float *device_points;
 
-	if (file.is_open()) {
-		getline(file, line);
-		n = stoi(line);
-		cout << n << endl;
-		int index = 0;
-		points = new float[n * 3];
+	int *centroids = new int[k];
+	int *dev_centroids;
+	centroids[0] = 0;
+	centroids[1] = 1;
 
-		while (getline(file, line)) {
-			int prev_val_index = 0;
+	calculate_blocks_threads(used_device_blocks, threads_count, points_per_thread, 4096, 512, n);
 
-			for (int i = 0; i < 3; i++) {
-				int val_index = line.find(',', prev_val_index);
-				val = line.substr(prev_val_index, val_index == -1 ? line.length() : val_index - prev_val_index);
-				points[index] = stof(val);
-				index += 1;
+	cudaError_t cudaStatus = cudaSetDevice(0);
 
-				prev_val_index = val_index + 1;
-			}
-		}
+	cudaStatus = cudaMalloc((void**)&device_points, n * sizeof(float));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed!");
+		return 0;
 	}
 
-	for (int i = 0; i < n*3; i++) {
-		printf("%f\n", points[i]);
+	cudaStatus = cudaMemcpy(device_points, points, n * sizeof(float), cudaMemcpyHostToDevice);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy failed!");
+		return 0;
 	}
 
-	file.close();
+	cudaStatus = cudaMalloc((void**)&dev_centroids, k * sizeof(int));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed!");
+		return 0;
+	}
+
+	cudaStatus = cudaMemcpy(dev_centroids, centroids, k * sizeof(int), cudaMemcpyHostToDevice);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy failed!");
+		return 0;
+	}
+
+	kmeans<<<used_device_blocks, threads_count>>>(device_points, k, centroids, points_per_thread);
+
+	cudaStatus = cudaGetLastError();
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
+		return 0;
+	}
+
+	cudaStatus = cudaDeviceSynchronize();
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching decrypt!\n", cudaStatus);
+		return 0;
+	}
+
     return 0;
 }
