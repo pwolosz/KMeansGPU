@@ -83,6 +83,7 @@
   <ItemGroup>
     <ClInclude Include="block_threads_helper.h" />
     <ClInclude Include="csv_helper.h" />
+    <ClInclude Include="device_helpers.h" />
     <ClInclude Include="math_helpers.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
