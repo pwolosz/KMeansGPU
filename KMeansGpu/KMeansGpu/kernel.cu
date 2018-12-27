@@ -7,6 +7,8 @@
 #include "csv_helper.h"
 #include "block_threads_helper.h"
 #include "math_helpers.h"
+#include <stdlib.h>
+#include <time.h>
 
 using namespace std;
 
@@ -17,13 +19,6 @@ __global__ void kmeans(float *points, int k, float *centroids, int points_per_th
 	int block = blockIdx.x;
 	int start_index = index * points_per_thread * 3, end_index = 3 * index * points_per_thread + 3 * points_per_thread - 1;
 	float distance, min_distance;
-	bool any_changes = false;
-	printf("%d, %d - [%d, %d]\n", index, block, start_index, end_index);
-
-	if (index == 0)
-		for (int i = 0; i < k; i++) {
-			printf("%f, %f, %f\n", centroids[i * 3], centroids[i * 3 + 1], centroids[i * 3 + 2]);
-		}
 
 	for (int i = start_index; i < end_index; i += 3) {
 		min_distance = FLT_MAX;
@@ -31,11 +26,6 @@ __global__ void kmeans(float *points, int k, float *centroids, int points_per_th
 			distance = calculate_distance(points[i], points[i + 1], points[i + 2], centroids[j * 3], centroids[j * 3 + 1], centroids[j * 3 + 2]);
 			if (distance < min_distance) {
 				min_distance = distance;
-
-				if (points_cluster[i / 3] != j) {
-					any_changes = true;
-				}
-
 				points_cluster[i / 3] = j;
 			}
 		}
@@ -64,29 +54,49 @@ __global__ void calculate_centroids(int *is_centroid_stable, float *points, int 
 		centroids[index * 3 + 1] = y / points_count;
 		centroids[index * 3 + 2] = z / points_count;
 	}
-
-	for (int i = 0; i < *n; i++) {
-		if (index == 0) {
-			printf("%d: %d\n", i, points_cluster[i]);
-		}
-	}
 }
 
 int main() {
-
+	srand(time(NULL));
 	int n, threads_count, used_device_blocks, points_per_thread = 3;
-	int k = 2, *is_centroid_stable = new int[k], is_finished = 0;
+	int k, is_finished = 0, max_iterations = 1000, iterations = 0;
+
+	printf("K: ");
+	scanf("%d", &k);
+
 	float *points = read_csv("D:\\Projects\\gpu\\KMeansGPU\\test1.txt", n);
 	float *device_points;
-	int *points_cluster, *points_cluster_device, *dev_is_centroid_stable, *dev_n;
+	int *points_cluster, *points_cluster_device, *dev_is_centroid_stable, *dev_n, *is_centroid_stable = new int[k];
 	float *centroids = new float[k*n];
-	float *dev_centroids;
-	centroids[0] = 4;
-	centroids[1] = 4;
-	centroids[2] = 1;
-	centroids[3] = 10;
-	centroids[4] = 10;
-	centroids[5] = 1;
+	float *dev_centroids, max_x = FLT_MIN, min_x = FLT_MAX, max_y = FLT_MIN, min_y = FLT_MAX, max_z = FLT_MIN, min_z = FLT_MAX;
+
+	for (int i = 0; i < n; i++) {
+		if (points[i * 3] > max_x) {
+			max_x = points[i];
+		}
+		if (points[i * 3] < min_x) {
+			min_x = points[i];
+		}
+		if (points[i * 3 + 1] > max_y) {
+			max_y = points[i + 1];
+		}
+		if (points[i * 3 + 1] < min_y) {
+			min_y = points[i + 1];
+		}
+		if (points[i * 3 + 2] > max_z) {
+			max_z = points[i + 2];
+		}
+		if (points[i * 3 + 2] < min_z) {
+			min_z = points[i + 2];
+		}
+	}
+
+	for (int i = 0; i < k; i++) {
+		centroids[i * 3] = rand() % (int)max_x + min_x;
+		centroids[i * 3 + 1] = rand() % (int)max_y + min_y;
+		centroids[i * 3 + 2] = rand() % (int)max_z + min_z;
+	}
+
 	calculate_blocks_threads(used_device_blocks, threads_count, points_per_thread, 4096, 512, n);
 
 	cudaError_t cudaStatus = cudaSetDevice(0);
@@ -98,10 +108,6 @@ int main() {
 
 	for (int i = 0; i < k; i++) {
 		is_centroid_stable[i] = 0;
-	}
-
-	for (int i = 0; i < n * 3; i += 3) {
-		printf("%f, %f, %f\n", points[i], points[i + 1], points[i + 2]);
 	}
 
 	cudaStatus = cudaMalloc((void**)&device_points, n * 3 * sizeof(float));
@@ -168,7 +174,7 @@ int main() {
 	printf("threads = %d\n", threads_count);
 	printf("blocks = %d\n", used_device_blocks);
 
-	while (!is_finished) {
+	while (!is_finished && iterations < max_iterations) {
 		kmeans <<<used_device_blocks, threads_count >>> (device_points, k, dev_centroids, points_per_thread, points_cluster_device, dev_n);
 		cudaStatus = cudaDeviceSynchronize();
 		if (cudaStatus != cudaSuccess) {
@@ -190,6 +196,8 @@ int main() {
 		for (int i = 0; i < k; i++) {
 			is_finished &= is_centroid_stable[i];
 		}
+
+		iterations++;
 	}
 
 	cudaStatus = cudaGetLastError();
