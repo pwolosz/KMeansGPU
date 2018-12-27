@@ -60,11 +60,10 @@ __global__ void calculate_centroids(int *is_centroid_stable, float *points, int 
 	}
 	else {
 		is_centroid_stable[index] = 0;
+		centroids[index * 3] = x / points_count;
+		centroids[index * 3 + 1] = y / points_count;
+		centroids[index * 3 + 2] = z / points_count;
 	}
-
-	centroids[index * 3] = x / points_count;
-	centroids[index * 3 + 1] = y / points_count;
-	centroids[index * 3 + 2] = z / points_count;
 
 	for (int i = 0; i < *n; i++) {
 		if (index == 0) {
@@ -216,6 +215,8 @@ int main() {
 	for (int i = 0; i < n; i++) {
 		printf("%d - %d\n", i, points_cluster[i]);
 	}
+
+	write_csv("out.txt", n, points, points_cluster);
 
 	return 0;
 }

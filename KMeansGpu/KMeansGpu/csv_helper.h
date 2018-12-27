@@ -39,3 +39,20 @@ float *read_csv(string name, int &n) {
 
 	return points;
 }
+
+void write_csv(string name, int n, float* points, int *points_cluster) {
+	ofstream file;
+
+	file.open(name);
+
+	if (file.is_open()) {
+		for (int i = 0; i < n; i++) {
+			file << points[i * 3] << ",";
+			file << points[i * 3 + 1] << ",";
+			file << points[i * 3 + 2] << ",";
+			file << points_cluster[i] << "\n";
+		}
+
+		file.close();
+	}
+}
