@@ -10,7 +10,7 @@
 
 using namespace std;
 
-__device__ float ERR = 1e5;
+__device__ float ERR = 0.00000001;
 
 __global__ void kmeans(float *points, int k, float *centroids, int points_per_thread, int *points_cluster, int *n) {
 	int index = threadIdx.x;
@@ -19,6 +19,11 @@ __global__ void kmeans(float *points, int k, float *centroids, int points_per_th
 	float distance, min_distance;
 	bool any_changes = false;
 	printf("%d, %d - [%d, %d]\n", index, block, start_index, end_index);
+
+	if (index == 0)
+		for (int i = 0; i < k; i++) {
+			printf("%f, %f, %f\n", centroids[i * 3], centroids[i * 3 + 1], centroids[i * 3 + 2]);
+		}
 
 	for (int i = start_index; i < end_index; i += 3) {
 		min_distance = FLT_MAX;
@@ -37,8 +42,7 @@ __global__ void kmeans(float *points, int k, float *centroids, int points_per_th
 	}
 }
 
-__global__ void calculate_centroids(int *is_finished, float *points, int *points_cluster, float *centroids, int *n) {
-	*is_finished = 1;
+__global__ void calculate_centroids(int *is_centroid_stable, float *points, int *points_cluster, float *centroids, int *n) {
 	int index = threadIdx.x;
 	int points_count = 0;
 	float x = 0, y = 0, z = 0;
@@ -51,26 +55,35 @@ __global__ void calculate_centroids(int *is_finished, float *points, int *points
 		}
 	}
 
+	if (fabsf(x / points_count - centroids[index * 3]) < ERR && fabsf(y / points_count - centroids[index * 3 + 1]) < ERR && fabsf(z / points_count - centroids[index * 3 + 2]) < ERR) {
+		is_centroid_stable[index] = 1;
+	}
+	else {
+		is_centroid_stable[index] = 0;
+	}
+
 	centroids[index * 3] = x / points_count;
 	centroids[index * 3 + 1] = y / points_count;
 	centroids[index * 3 + 2] = z / points_count;
 
 	for (int i = 0; i < *n; i++) {
-		printf("%d: %d\n", i, points_cluster[i]);
+		if (index == 0) {
+			printf("%d: %d\n", i, points_cluster[i]);
+		}
 	}
 }
 
 int main() {
 
 	int n, threads_count, used_device_blocks, points_per_thread = 3;
-	int k = 2, is_finished = 0;
+	int k = 2, *is_centroid_stable = new int[k], is_finished = 0;
 	float *points = read_csv("D:\\Projects\\gpu\\KMeansGPU\\test1.txt", n);
 	float *device_points;
-	int *points_cluster, *points_cluster_device, *dev_is_finished, *dev_n;
+	int *points_cluster, *points_cluster_device, *dev_is_centroid_stable, *dev_n;
 	float *centroids = new float[k*n];
 	float *dev_centroids;
-	centroids[0] = 0;
-	centroids[1] = 0;
+	centroids[0] = 4;
+	centroids[1] = 4;
 	centroids[2] = 1;
 	centroids[3] = 10;
 	centroids[4] = 10;
@@ -82,6 +95,10 @@ int main() {
 
 	for (int i = 0; i < n; i++) {
 		points_cluster[i] = -1;
+	}
+
+	for (int i = 0; i < k; i++) {
+		is_centroid_stable[i] = 0;
 	}
 
 	for (int i = 0; i < n * 3; i += 3) {
@@ -124,9 +141,15 @@ int main() {
 		return 0;
 	}
 
-	cudaStatus = cudaMalloc((void**)&dev_is_finished, sizeof(int));
+	cudaStatus = cudaMalloc((void**)&dev_is_centroid_stable, k * sizeof(int));
 	if (cudaStatus != cudaSuccess) {
 		fprintf(stderr, "cudaMalloc failed!");
+		return 0;
+	}
+
+	cudaStatus = cudaMemcpy(dev_is_centroid_stable, is_centroid_stable, k * sizeof(int), cudaMemcpyHostToDevice);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMemcpy failed!");
 		return 0;
 	}
 
@@ -147,22 +170,26 @@ int main() {
 	printf("blocks = %d\n", used_device_blocks);
 
 	while (!is_finished) {
-		kmeans << <used_device_blocks, threads_count >> > (device_points, k, dev_centroids, points_per_thread, points_cluster_device, dev_n);
+		kmeans <<<used_device_blocks, threads_count >>> (device_points, k, dev_centroids, points_per_thread, points_cluster_device, dev_n);
 		cudaStatus = cudaDeviceSynchronize();
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "cudaDeviceSynchronize returned error code %d after kmeans!\n", cudaStatus);
 			return 0;
 		}
-		calculate_centroids<<<1, 1>>>(dev_is_finished, device_points, points_cluster_device, dev_centroids, dev_n);
+		calculate_centroids<<<1, k>>>(dev_is_centroid_stable, device_points, points_cluster_device, dev_centroids, dev_n);
 		cudaStatus = cudaDeviceSynchronize();
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "cudaDeviceSynchronize returned error code %d after calculate_centroids!\n", cudaStatus);
 			return 0;
 		}
-		cudaStatus = cudaMemcpy(&is_finished, dev_is_finished, sizeof(int), cudaMemcpyDeviceToHost);
+		cudaStatus = cudaMemcpy(is_centroid_stable, dev_is_centroid_stable, k * sizeof(int), cudaMemcpyDeviceToHost);
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "cudaMemcpy from device failed!");
 			return 0;
+		}
+		is_finished = 1;
+		for (int i = 0; i < k; i++) {
+			is_finished &= is_centroid_stable[i];
 		}
 	}
 
