@@ -58,13 +58,13 @@ __global__ void calculate_centroids(int *is_centroid_stable, float *points, int 
 
 int main() {
 	srand(time(NULL));
-	int n, threads_count, used_device_blocks, points_per_thread = 3;
-	int k, is_finished = 0, max_iterations = 1000, iterations = 0;
+	int n, threads_count, used_device_blocks, points_per_thread = 100;
+	int k, is_finished = 0, max_iterations = 100, iterations = 0;
 
 	printf("K: ");
 	scanf("%d", &k);
 
-	float *points = read_csv("D:\\Projects\\gpu\\KMeansGPU\\test1.txt", n);
+	float *points = read_csv("D:\\Projects\\gpu\\KMeansGPU\\data1.txt", n);
 	float *device_points;
 	int *points_cluster, *points_cluster_device, *dev_is_centroid_stable, *dev_n, *is_centroid_stable = new int[k];
 	float *centroids = new float[k*n];
@@ -174,6 +174,8 @@ int main() {
 	printf("threads = %d\n", threads_count);
 	printf("blocks = %d\n", used_device_blocks);
 
+	clock_t begin = clock();
+
 	while (!is_finished && iterations < max_iterations) {
 		kmeans <<<used_device_blocks, threads_count >>> (device_points, k, dev_centroids, points_per_thread, points_cluster_device, dev_n);
 		cudaStatus = cudaDeviceSynchronize();
@@ -198,7 +200,14 @@ int main() {
 		}
 
 		iterations++;
+
+		if (iterations % 10 == 0) {
+			printf("|");
+		}
 	}
+
+	printf("\n");
+	clock_t end = clock();
 
 	cudaStatus = cudaGetLastError();
 	if (cudaStatus != cudaSuccess) {
@@ -219,12 +228,18 @@ int main() {
 	}
 
 	printf("-----------------\n");
+	
+	write_csv("out.txt", n, points, points_cluster);
 
-	for (int i = 0; i < n; i++) {
-		printf("%d - %d\n", i, points_cluster[i]);
+	if (iterations == max_iterations) {
+		printf("The method didn't converge\n");
+	}
+	else {
+		printf("The method converge after %d iterations\n", iterations);
 	}
 
-	write_csv("out.txt", n, points, points_cluster);
+	printf("%llu seconds ellapsed\n", uint64_t(end - begin) / CLOCKS_PER_SEC);
+	printf("Results saved to out.txt\n");
 
 	return 0;
 }
