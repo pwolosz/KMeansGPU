@@ -12,12 +12,14 @@
 
 using namespace std;
 
-__device__ float ERR = 0.00000001;
+__device__ float ERR = 0.0001;
 
 __global__ void kmeans(float *points, int k, float *centroids, int points_per_thread, int *points_cluster, int *n) {
 	int index = threadIdx.x;
 	int block = blockIdx.x;
-	int start_index = index * points_per_thread * 3, end_index = 3 * index * points_per_thread + 3 * points_per_thread - 1;
+	int start_index = index * points_per_thread * 3 + block * points_per_thread * 512 * 3,
+		end_index = block * points_per_thread * 512 * 3 + 3 * index * points_per_thread + 3 * points_per_thread - 1;
+	if (start_index > *n * 3) return;
 	float distance, min_distance;
 
 	for (int i = start_index; i < end_index; i += 3) {
@@ -58,7 +60,7 @@ __global__ void calculate_centroids(int *is_centroid_stable, float *points, int 
 
 int main() {
 	srand(time(NULL));
-	int n, threads_count, used_device_blocks, points_per_thread = 100;
+	int n, threads_count, used_device_blocks, points_per_thread = 2;
 	int k, is_finished = 0, max_iterations = 100, iterations = 0;
 
 	printf("K: ");

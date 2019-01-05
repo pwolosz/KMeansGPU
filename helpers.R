@@ -1,6 +1,6 @@
 library(ggplot2)
 
-n <- 10000
+n <- 512
 
 # WELL DISTRIBUTED CLUSTERS
 x1 <- 0
