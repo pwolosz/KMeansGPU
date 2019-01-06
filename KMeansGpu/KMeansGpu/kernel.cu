@@ -9,6 +9,7 @@
 #include "math_helpers.h"
 #include <stdlib.h>
 #include <time.h>
+#include <float.h>
 
 using namespace std;
 
