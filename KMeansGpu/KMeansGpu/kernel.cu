@@ -58,32 +58,35 @@ __global__ void calculate_tmp_centroids(float *tmp_centroids, int k, int threads
 		}
 	}
 
-	tmp_centroids[index * 3 + threads_count * block * 3] = x / points_this;
-	tmp_centroids[index * 3 + threads_count * block * 3 + 1] = y / points_this;
-	tmp_centroids[index * 3 + threads_count * block * 3 + 2] = z / points_this;
+	tmp_centroids[index * 3 + threads_count * block * 3] = x;
+	tmp_centroids[index * 3 + threads_count * block * 3 + 1] = y;
+	tmp_centroids[index * 3 + threads_count * block * 3 + 2] = z;
 	points_count[index + threads_count * block] = points_this;
 }
 
 __global__ void calculate_centroids(int *is_centroid_stable, float *centroids, float *tmp_centroids, int *points_count, int threads_count) {
 	int index = threadIdx.x;
-	float x = tmp_centroids[3 * index], y = tmp_centroids[3 * index + 1], z = tmp_centroids[3 * index + 2];
-	int points_this = points_count[0];
+	float x = 0, y = 0, z = 0;
+	int points_this = 0;
 	int start_index = index * threads_count;
 	int end_index = (index + 1) * threads_count;
 
-	printf("%d: %d - %d\n", index, start_index, end_index);
+	//printf("%d: %d - %d\n", index, start_index, end_index);
 
-	for (int i = start_index + 1; i < end_index; i++) {
-
+	for (int i = start_index; i < end_index; i++) {
+		x += tmp_centroids[i * 3];
+		y += tmp_centroids[i * 3 + 1];
+		z += tmp_centroids[i * 3 + 2];
+		points_this += points_count[i];
 	}
 
-	if (fabsf(x - centroids[index * 3]) < ERR && fabsf(y - centroids[index * 3 + 1]) < ERR && fabsf(z - centroids[index * 3 + 2]) < ERR) {
+	if (fabsf(x / points_this - centroids[index * 3]) < ERR && fabsf(y / points_this - centroids[index * 3 + 1]) < ERR && fabsf(z / points_this - centroids[index * 3 + 2]) < ERR) {
 		is_centroid_stable[index] = 1;
 	}
 	else {
-		centroids[3 * index] = x;
-		centroids[3 * index + 1] = y;
-		centroids[3 * index + 2] = z;
+		centroids[3 * index] = x / points_this;
+		centroids[3 * index + 1] = y / points_this;
+		centroids[3 * index + 2] = z / points_this;
 		is_centroid_stable[index] = 0;
 	}
 
@@ -91,7 +94,7 @@ __global__ void calculate_centroids(int *is_centroid_stable, float *centroids, f
 
 int main() {
 	srand(time(NULL));
-	int n, threads_count, used_device_blocks, points_per_thread = 2;
+	int n, threads_count, used_device_blocks, points_per_thread = 100;
 	int k, is_finished = 0, max_iterations = 100, iterations = 0;
 
 	printf("K: ");
@@ -231,14 +234,14 @@ int main() {
 			return 0;
 		}
 
-		calculate_tmp_centroids <<<k, 1>>>(dev_tmp_centroids, k, 1, dev_points_count, dev_n, points_cluster_device, device_points);
+		calculate_tmp_centroids <<<k, THREADS>>>(dev_tmp_centroids, k, THREADS, dev_points_count, dev_n, points_cluster_device, device_points);
 		cudaStatus = cudaDeviceSynchronize();
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "cudaDeviceSynchronize returned error code %d after calculate_centroids!\n", cudaStatus);
 			return 0;
 		}
 
-		calculate_centroids <<<1, k >>> (dev_is_centroid_stable, dev_centroids, dev_tmp_centroids, dev_points_count, 1);
+		calculate_centroids <<<1, k >>> (dev_is_centroid_stable, dev_centroids, dev_tmp_centroids, dev_points_count, THREADS);
 		cudaStatus = cudaDeviceSynchronize();
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "cudaDeviceSynchronize returned error code %d after calculate_centroids!\n", cudaStatus);
@@ -284,7 +287,8 @@ int main() {
 	}
 
 	printf("-----------------\n");
-	
+	printf("%llu seconds ellapsed\n", uint64_t(end - begin) / CLOCKS_PER_SEC);
+
 	write_csv("out.txt", n, points, points_cluster);
 
 	if (iterations == max_iterations) {
@@ -294,7 +298,6 @@ int main() {
 		printf("The method converge after %d iterations\n", iterations);
 	}
 
-	printf("%llu seconds ellapsed\n", uint64_t(end - begin) / CLOCKS_PER_SEC);
 	printf("Results saved to out.txt\n");
 
 	return 0;
