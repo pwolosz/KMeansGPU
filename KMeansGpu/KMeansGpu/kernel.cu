@@ -64,28 +64,29 @@ __global__ void calculate_tmp_centroids(float *tmp_centroids, int k, int threads
 	points_count[index + threads_count * block] = points_this;
 }
 
-__global__ void calculate_centroids(int *is_centroid_stable, float *points, int *points_cluster, float *centroids, int *n) {
+__global__ void calculate_centroids(int *is_centroid_stable, float *centroids, float *tmp_centroids, int *points_count, int threads_count) {
 	int index = threadIdx.x;
-	int points_count = 0;
-	float x = 0, y = 0, z = 0;
-	for (int i = 0; i < *n; i++) {
-		if (points_cluster[i] == index) {
-			x += points[i * 3];
-			y += points[i * 3 + 1];
-			z += points[i * 3 + 2];
-			points_count++;
-		}
+	float x = tmp_centroids[3 * index], y = tmp_centroids[3 * index + 1], z = tmp_centroids[3 * index + 2];
+	int points_this = points_count[0];
+	int start_index = index * threads_count;
+	int end_index = (index + 1) * threads_count;
+
+	printf("%d: %d - %d\n", index, start_index, end_index);
+
+	for (int i = start_index + 1; i < end_index; i++) {
+
 	}
 
-	if (fabsf(x / points_count - centroids[index * 3]) < ERR && fabsf(y / points_count - centroids[index * 3 + 1]) < ERR && fabsf(z / points_count - centroids[index * 3 + 2]) < ERR) {
+	if (fabsf(x - centroids[index * 3]) < ERR && fabsf(y - centroids[index * 3 + 1]) < ERR && fabsf(z - centroids[index * 3 + 2]) < ERR) {
 		is_centroid_stable[index] = 1;
 	}
 	else {
+		centroids[3 * index] = x;
+		centroids[3 * index + 1] = y;
+		centroids[3 * index + 2] = z;
 		is_centroid_stable[index] = 0;
-		centroids[index * 3] = x / points_count;
-		centroids[index * 3 + 1] = y / points_count;
-		centroids[index * 3 + 2] = z / points_count;
 	}
+
 }
 
 int main() {
@@ -102,7 +103,7 @@ int main() {
 	float *centroids = new float[k*3];
 	float *dev_centroids, max_x = FLT_MIN, min_x = FLT_MAX, max_y = FLT_MIN, min_y = FLT_MAX, max_z = FLT_MIN, min_z = FLT_MAX;
 	int *dev_points_count;
-
+	float *dev_tmp_centroids;
 
 	for (int i = 0; i < n; i++) {
 		if (points[i * 3] > max_x) {
@@ -210,6 +211,12 @@ int main() {
 		return 0;
 	}
 
+	cudaStatus = cudaMalloc((void**)&dev_tmp_centroids, 3 * k * THREADS * sizeof(float));
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaMalloc failed!");
+		return 0;
+	}
+
 	printf("n = %d\n", n);
 	printf("threads = %d\n", threads_count);
 	printf("blocks = %d\n", used_device_blocks);
@@ -223,14 +230,21 @@ int main() {
 			fprintf(stderr, "cudaDeviceSynchronize returned error code %d after kmeans!\n", cudaStatus);
 			return 0;
 		}
-		//calculate_centroids << <1, k >> > (dev_is_centroid_stable, device_points, points_cluster_device, dev_centroids, dev_n);
 
-		calculate_tmp_centroids <<<k, 1>>>(dev_centroids, k, 1, dev_points_count, dev_n, points_cluster_device, device_points);
+		calculate_tmp_centroids <<<k, 1>>>(dev_tmp_centroids, k, 1, dev_points_count, dev_n, points_cluster_device, device_points);
 		cudaStatus = cudaDeviceSynchronize();
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "cudaDeviceSynchronize returned error code %d after calculate_centroids!\n", cudaStatus);
 			return 0;
 		}
+
+		calculate_centroids <<<1, k >>> (dev_is_centroid_stable, dev_centroids, dev_tmp_centroids, dev_points_count, 1);
+		cudaStatus = cudaDeviceSynchronize();
+		if (cudaStatus != cudaSuccess) {
+			fprintf(stderr, "cudaDeviceSynchronize returned error code %d after calculate_centroids!\n", cudaStatus);
+			return 0;
+		}
+
 		cudaStatus = cudaMemcpy(is_centroid_stable, dev_is_centroid_stable, k * sizeof(int), cudaMemcpyDeviceToHost);
 		if (cudaStatus != cudaSuccess) {
 			fprintf(stderr, "cudaMemcpy from device failed!");
