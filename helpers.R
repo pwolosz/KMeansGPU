@@ -1,6 +1,6 @@
 library(ggplot2)
 
-n <- 512
+n <- 1000000
 
 # WELL DISTRIBUTED CLUSTERS
 x1 <- 0
@@ -9,7 +9,7 @@ x3 <- 5
 y1 <- 0
 y2 <- 10
 y3 <- 5
-path <- 'D:\\Projects\\gpu\\KMeansGPU\\data1.txt'
+path <- '/home/samba/woloszp/Desktop/GPU/KMeansGPU/data1.txt'
 
 x <- c()
 y <- c()
@@ -43,7 +43,7 @@ data <- data.frame(x = x, y = y, z = z)
 write.table(data, sep = ",", file = path, col.names = FALSE, row.names = FALSE)
 
 # DRAW PLOT
-in_path <- 'D:\\Projects\\gpu\\KMeansGPU\\out.txt'
+in_path <- '/home/samba/woloszp/Desktop/GPU/KMeansGPU/out.txt'
 in_data <- read.csv(in_path, sep = ",")
 
 colnames(in_data) <- c("x", "y", "z", "label")

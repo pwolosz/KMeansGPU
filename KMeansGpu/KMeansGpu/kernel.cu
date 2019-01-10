@@ -101,7 +101,7 @@ int main() {
 	printf("K: ");
 	scanf("%d", &k);
 
-	float *points = read_csv("D:\\Projects\\gpu\\KMeansGPU\\data1.txt", n);
+	float *points = read_csv("/home/samba/woloszp/Desktop/GPU/KMeansGPU/data1.txt", n);
 	float *device_points;
 	int *points_cluster, *points_cluster_device, *dev_is_centroid_stable, *dev_n, *is_centroid_stable = new int[k];
 	float *centroids = new float[k*3];
@@ -290,7 +290,7 @@ int main() {
 	printf("-----------------\n");
 	printf("%llu seconds ellapsed\n", uint64_t(end - begin) / CLOCKS_PER_SEC);
 
-	write_csv("out.txt", n, points, points_cluster);
+	write_csv("/home/samba/woloszp/Desktop/GPU/KMeansGPU/out.txt", n, points, points_cluster);
 
 	if (iterations == max_iterations) {
 		printf("The method didn't converge\n");
@@ -298,6 +298,20 @@ int main() {
 	else {
 		printf("The method converge after %d iterations\n", iterations);
 	}
+
+	cudaFree(dev_tmp_centroids);
+	cudaFree(device_points);
+	cudaFree(points_cluster_device);
+	cudaFree(dev_is_centroid_stable);
+	cudaFree(dev_n);
+	cudaFree(dev_centroids);
+	cudaFree(dev_points_count);
+
+	delete(points);
+	delete(device_points);
+	delete(points_cluster);
+	delete(is_centroid_stable);
+	delete(dev_centroids);
 
 	printf("Results saved to out.txt\n");
 
